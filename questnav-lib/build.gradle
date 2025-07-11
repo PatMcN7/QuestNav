@@ -8,21 +8,67 @@ plugins {
 
 // Version and build configuration
 ext {
-    baseVersion = project.findProperty('questnavVersion') ?: '2025-1.0.0'
-    releaseType = project.findProperty('releaseType') ?: 'dev'
-    frcYear = project.findProperty('frcYear') ?: '2025'
-    wpilibVersion = project.findProperty('wpilibVersion') ?: '2025.3.2'
+    baseVersion = project.findProperty('questnavVersion')
+    releaseType = project.findProperty('releaseType')
+    frcYear = project.findProperty('frcYear')
+    wpilibVersion = project.findProperty('wpilibVersion')
 
     // Construct full version from base + release type
     questnavVersion = releaseType == 'release' ? baseVersion : "${baseVersion}-${releaseType}"
 
     // Vendor dependency configuration
-    vendorUuid = 'a706fe68-86e5-4aed-92c5-ce05aca007f0'
+    vendorUuid = project.findProperty('vendorUuid')
+    mavenGroupId = project.findProperty('mavenGroupId')
+    javaArtifactId = project.findProperty('javaArtifactId')
+    cppArtifactId = project.findProperty('cppArtifactId')
 
     // Repository configuration
     mavenRepoUrl = project.findProperty('mavenRepoUrl') ?: 'https://maven.questnav.gg/'
     isSnapshot = releaseType in ['dev', 'snapshot'] || questnavVersion.contains('-SNAPSHOT')
 }
+
+dependencies {
+    // Java
+    implementation "edu.wpi.first.wpilibj:wpilibj-java:${wpilibVersion}"
+    implementation "edu.wpi.first.wpiutil:wpiutil-java:${wpilibVersion}"
+    implementation "edu.wpi.first.wpimath:wpimath-java:${wpilibVersion}"
+    implementation "edu.wpi.first.ntcore:ntcore-java:${wpilibVersion}"
+    implementation "edu.wpi.first.wpiunits:wpiunits-java:${wpilibVersion}"
+    implementation "com.google.protobuf:protobuf-java:4.31.1"
+    implementation "us.hebi.quickbuf:quickbuf-runtime:1.4"
+
+    implementation 'com.fasterxml.jackson.core:jackson-annotations:2.15.2'
+
+    // Test dependencies
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.1'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+// C++ configuration
+model {
+    components {
+        "questnavlibCpp"(NativeLibrarySpec) {
+            sources {
+                cpp {
+                    source {
+                        srcDirs 'src/main/native/cpp'
+                        include '**/*.cpp', '**/*.cc'
+                    }
+                    exportedHeaders {
+                        srcDirs 'src/main/native/include'
+                        include "**/*.h"
+                    }
+                }
+            }
+
+            nativeUtils.useRequiredLibrary(it, "wpilib_shared")
+            nativeUtils.useRequiredLibrary(it, "wpiutil_shared")
+            nativeUtils.useRequiredLibrary(it, "wpimath_shared")
+            nativeUtils.useRequiredLibrary(it, "ntcore_shared")
+        }
+    }
+}
+
 
 // Java configuration
 java {
@@ -30,97 +76,6 @@ java {
     targetCompatibility = JavaVersion.VERSION_17
     withSourcesJar()
     withJavadocJar()
-}
-
-// C++ Model configuration
-model {
-    components {
-        questnav(NativeLibrarySpec) {
-            sources {
-                cpp {
-                    source {
-                        srcDir 'src/main/native/cpp'
-                        include '**/*.cpp'
-                    }
-                    exportedHeaders {
-                        srcDir 'src/main/native/include'
-                    }
-                }
-            }
-
-            targetPlatform 'windows-x86_64'
-            targetPlatform 'linux-x86_64'
-            targetPlatform 'macOS-x86_64'
-            targetPlatform 'linux-arm64'
-            targetPlatform 'linux-athena'
-        }
-    }
-
-    platforms {
-        'windows-x86_64' {
-            operatingSystem 'windows'
-            architecture 'x86_64'
-        }
-        'linux-x86_64' {
-            operatingSystem 'linux'
-            architecture 'x86_64'
-        }
-        'macOS-x86_64' {
-            operatingSystem 'osx'
-            architecture 'x86_64'
-        }
-        'linux-arm64' {
-            operatingSystem 'linux'
-            architecture 'arm64'
-        }
-        'linux-athena' {
-            operatingSystem 'linux'
-            architecture 'athena'
-        }
-    }
-
-    binaries {
-        all {
-            if (it instanceof SharedLibraryBinarySpec) {
-                // Common C++ compiler settings
-                it.cppCompiler.args << '-std=c++20'
-                it.cppCompiler.args << '-Wall'
-                it.cppCompiler.args << '-Wextra'
-                it.cppCompiler.args << '-Werror'
-                it.cppCompiler.args << '-pedantic'
-                it.cppCompiler.args << '-Wno-unused-parameter'
-                it.cppCompiler.args << '-Wno-missing-field-initializers'
-                it.cppCompiler.args << '-fPIC'
-
-                // Platform-specific settings
-                if (it.targetPlatform.name.contains('windows')) {
-                    it.cppCompiler.args << '-D_WIN32_WINNT=0x0601'
-                } else if (it.targetPlatform.name.contains('linux')) {
-                    it.cppCompiler.args << '-pthread'
-
-                    // Special handling for athena (RoboRIO)
-                    if (it.targetPlatform.name == 'linux-athena') {
-                        it.cppCompiler.args << '-Wformat=2'
-                        it.cppCompiler.args << '-Wno-psabi'
-                    }
-                }
-
-                // Linker settings
-                if (it.targetPlatform.name.contains('linux')) {
-                    it.linker.args << '-pthread'
-                    it.linker.args << '-ldl'
-                }
-
-                // Windows-specific linker settings
-                if (it.targetPlatform.name.contains('windows')) {
-                    def symbolsFile = file('src/main/native/symbols.def')
-                    if (symbolsFile.exists()) {
-                        it.linker.args << "/DEF:${symbolsFile.absolutePath}"
-                    }
-                }
-            }
-        }
-    }
 }
 
 repositories {
@@ -134,54 +89,6 @@ repositories {
         maven {
             name = "QuestNavRepo"
             url = mavenRepoUrl + (isSnapshot ? "/snapshots" : "/releases")
-        }
-    }
-}
-
-dependencies {
-    // Java dependencies
-    implementation "edu.wpi.first.wpilibj:wpilibj-java:${wpilibVersion}"
-    implementation "edu.wpi.first.wpiutil:wpiutil-java:${wpilibVersion}"
-    implementation "edu.wpi.first.wpimath:wpimath-java:${wpilibVersion}"
-    implementation "edu.wpi.first.ntcore:ntcore-java:${wpilibVersion}"
-    implementation "edu.wpi.first.wpiunits:wpiunits-java:${wpilibVersion}"
-    implementation "com.google.protobuf:protobuf-java:4.31.1"
-    implementation "us.hebi.quickbuf:quickbuf-runtime:1.4"
-    implementation 'com.fasterxml.jackson.core:jackson-annotations:2.15.2'
-
-    // Test dependencies
-    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.1'
-    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-}
-
-// Add WPILib native dependencies after evaluation when frcHome is available
-afterEvaluate {
-    model {
-        binaries {
-            all {
-                if (it instanceof SharedLibraryBinarySpec) {
-                    // Add WPILib include directories (now frcHome is available)
-                    if (project.hasProperty('frcHome')) {
-                        it.cppCompiler.args << "-I${project.frcHome}/include"
-                        it.cppCompiler.args << "-I${project.frcHome}/include/eigen3"
-
-                        // Add library paths and libraries
-                        it.linker.args << "-L${project.frcHome}/lib"
-                        it.linker.args << '-lwpilibc'
-                        it.linker.args << '-lwpiHal'
-                        it.linker.args << '-lwpiutil'
-                        it.linker.args << '-lntcore'
-                        it.linker.args << '-lnetworkNT'
-
-                        // Special athena handling
-                        if (it.targetPlatform.name == 'linux-athena') {
-                            it.cppCompiler.args << "--sysroot=${project.frcHome}/linux/athena"
-                            it.linker.args << "--sysroot=${project.frcHome}/linux/athena"
-                            it.linker.args << "-Wl,-rpath-link,${project.frcHome}/linux/athena/lib"
-                        }
-                    }
-                }
-            }
         }
     }
 }
@@ -230,38 +137,25 @@ task generateVendorJson() {
     outputs.upToDateWhen { false }
 }
 
-// Create publishable artifacts
+// Create publishable artifact
 def vendorJsonArtifact = artifacts.add('archives', vendorJsonOutput) {
     type = 'json'
     builtBy generateVendorJson
 }
 
-// Task to create headers zip for C++ distribution
-task createHeadersZip(type: Zip) {
-    description = "Create zip of C++ headers"
-    group = "QuestNavLib"
-
-    from 'src/main/native/include'
-    archiveBaseName = 'questnavlib-cpp'
-    archiveClassifier = 'headers'
-    archiveVersion = questnavVersion
-    destinationDirectory = file("$buildDir/headers")
-}
-
 // Publishing configuration
 publishing {
     publications {
-        // Java publication
         questnavlibJava(MavenPublication) {
-            groupId = 'gg.questnav'
-            artifactId = 'questnavlib-java'
+            groupId = mavenGroupId
+            artifactId = javaArtifactId
             version = questnavVersion
 
             from components.java
 
             pom {
                 name = 'QuestNavLib Java'
-                description = 'QuestNav vendor dependency library for Java'
+                description = 'QuestNav vendor dependency library (Java)'
                 url = 'https://github.com/questnav/questnav/tree/main/questnav-lib'
 
                 licenses {
@@ -279,32 +173,16 @@ publishing {
             }
         }
 
-        // C++ publication
         questnavlibCpp(MavenPublication) {
-            groupId = 'gg.questnav'
-            artifactId = 'questnavlib-cpp'
+            groupId = mavenGroupId
+            artifactId = cppArtifactId
             version = questnavVersion
 
-            // Add headers zip
-            artifact(createHeadersZip) {
-                classifier = 'headers'
-                extension = 'zip'
-            }
-
-            // Add platform-specific binaries after build
-            afterEvaluate {
-                fileTree("$buildDir/libs").include("**/*.so", "**/*.dll", "**/*.dylib").each { file ->
-                    def platformName = file.parentFile.name.replace('/', '-')
-                    artifact(file) {
-                        classifier = platformName
-                        extension = file.extension
-                    }
-                }
-            }
+            from components.java
 
             pom {
                 name = 'QuestNavLib C++'
-                description = 'QuestNav vendor dependency library for C++'
+                description = 'QuestNav vendor dependency library (C++)'
                 url = 'https://github.com/questnav/questnav/tree/main/questnav-lib'
 
                 licenses {
@@ -322,9 +200,8 @@ publishing {
             }
         }
 
-        // Vendor JSON publication
         questnavlibJson(MavenPublication) {
-            groupId = 'gg.questnav'
+            groupId = mavenGroupId
             artifactId = 'questnavlib-json'
             version = questnavVersion
 
@@ -357,6 +234,7 @@ publishing {
                 name = "QuestNavRepo"
                 url = mavenRepoUrl + (isSnapshot ? "/snapshots" : "/releases")
 
+                // Add credentials if provided
                 if (project.hasProperty('mavenUsername') && project.hasProperty('mavenPassword')) {
                     credentials {
                         username = project.findProperty('mavenUsername')
@@ -365,13 +243,14 @@ publishing {
                 }
             }
         }
+
+        // For local testing
         mavenLocal()
     }
 }
 
 // Build dependencies
 build.dependsOn generateVendorJson
-build.dependsOn createHeadersZip
 
 // Task to copy vendor JSON to local output for testing
 task copyVendorJsonLocal(type: Copy) {
@@ -384,7 +263,7 @@ task copyVendorJsonLocal(type: Copy) {
     dependsOn generateVendorJson
 }
 
-// Enhanced build info task
+// Task to print build info
 task buildInfo {
     description = "Print build information"
     group = "QuestNavLib"
@@ -396,46 +275,31 @@ task buildInfo {
         println "  Full Version: ${questnavVersion}"
         println "  FRC Year: ${frcYear}"
         println "  WPILib Version: ${wpilibVersion}"
+        println "  Group ID: ${mavenGroupId}"
+        println "  Java Artifact ID: ${javaArtifactId}"
+        println "  C++ Artifact ID: ${cppArtifactId}"
         println "  UUID: ${vendorUuid}"
         println "  Is Snapshot: ${isSnapshot}"
-        println ""
-        println "Publications:"
-        println "  Java: gg.questnav:questnavlib-java:${questnavVersion}"
-        println "  C++: gg.questnav:questnavlib-cpp:${questnavVersion}"
-        println "  JSON: gg.questnav:questnavlib-json:${questnavVersion}"
-        println ""
-        println "Supported Platforms:"
-        println "  - windows-x86_64"
-        println "  - linux-x86_64"
-        println "  - macOS-x86_64"
-        println "  - linux-arm64"
-        println "  - linux-athena (RoboRIO)"
+        println "  Repository Type: ${isSnapshot ? 'snapshots' : 'release'}"
         if (project.hasProperty('mavenRepoUrl')) {
-            println ""
-            println "Repository: ${mavenRepoUrl}"
+            println "  Repository: ${mavenRepoUrl}"
         }
-        def jsonUrl = "https://maven.questnav.gg/${isSnapshot ? 'snapshots' : 'releases'}/gg/questnav/questnavlib-json/${questnavVersion}/questnavlib-json-${questnavVersion}.json"
-        println "Vendor JSON URL: ${jsonUrl}"
-
-        // Debug: Print frcHome if available
-        if (project.hasProperty('frcHome')) {
-            println ""
-            println "FRC Home: ${project.frcHome}"
-        }
+        def jsonUrl = "https://maven.questnav.gg/${isSnapshot ? 'snapshots' : 'release'}/gg/questnav/questnavlib-json/${questnavVersion}/questnavlib-json-${questnavVersion}.json"
+        println "  Vendor JSON URL: ${jsonUrl}"
     }
 }
 
+// Gradle wrapper task
 wrapper {
     gradleVersion = '8.11'
 }
 
+// Clean task to remove generated files
 clean {
     delete "$buildDir/generated"
     delete "$buildDir/outputs"
-    delete "$buildDir/headers"
 }
 
-// Spotless configuration
 spotless {
     java {
         target fileTree(".") {
@@ -443,7 +307,9 @@ spotless {
             exclude "**/build/**", "**/build-*/**", "**/generated/**"
         }
         toggleOffOn()
-        licenseHeader '''/*
+
+        licenseHeader '''
+/*
  * QUESTNAV
    https://github.com/QuestNav
  * Copyright (C) $YEAR QuestNav
@@ -457,7 +323,6 @@ spotless {
         trimTrailingWhitespace()
         endWithNewline()
     }
-
     cpp {
         target fileTree(".") {
             include "src/main/native/**/*.cpp", "src/main/native/**/*.h"
@@ -476,7 +341,6 @@ spotless {
         trimTrailingWhitespace()
         endWithNewline()
     }
-
     groovyGradle {
         target fileTree(".") {
             include "**/*.gradle"
@@ -487,7 +351,6 @@ spotless {
         trimTrailingWhitespace()
         endWithNewline()
     }
-
     json {
         target fileTree(".") {
             include "**/*.json"
@@ -495,7 +358,6 @@ spotless {
         }
         gson().indentWithSpaces(4)
     }
-
     format "misc", {
         target fileTree(".") {
             include "**/*.md", "**/.gitignore"

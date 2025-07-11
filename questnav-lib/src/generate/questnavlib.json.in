@@ -16,6 +16,12 @@
       "version": "${questnav_version}"
     }
   ],
-    "cppDependencies": [],
+    "cppDependencies": [
+    {
+      "groupId": "gg.questnav",
+      "artifactId": "questnavlib-cpp",
+      "version": "${questnav_version}"
+    }
+  ],
     "jniDependencies": []
 }
